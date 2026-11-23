@@ -278,6 +278,7 @@ bool PageAircraft::handleRadiusTap(App& app, int x, int yRel) {
   int next = (r <= 5) ? 10 : (r <= 10) ? 15 : (r <= 15) ? 25 : (r <= 25) ? 50 : 5;   // 5/10/15/25/50
   _settings.set("adsbRadiusNm", (long)next);
   _settings.save();
+  _ap.applyFilters((float)next, _ap.hideGround()); // ring + list update now, even mid-fetch
   _ap.poll();                                      // refetch with the new radius
   _dirty = _needClear = true;                      // ring label changed -> relayout
   return true;
@@ -289,6 +290,7 @@ bool PageAircraft::handleGroundTap(App& app, int x, int yRel) {
   bool hide = _settings.getInt("adsbHideGround", 0) != 0;
   _settings.set("adsbHideGround", (long)(hide ? 0 : 1));
   _settings.save();
+  _ap.applyFilters(_ap.radiusNm(), !hide);         // re-filter now, even mid-fetch
   _ap.poll();                                      // refetch / re-filter
   _dirty = _needClear = true;
   return true;

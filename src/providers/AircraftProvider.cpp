@@ -46,6 +46,14 @@ bool AircraftProvider::overhead(String& msg, float nm, float elMin) const {
   return found;
 }
 
+void AircraftProvider::applyFilters(float radiusNm, bool hideGround) {
+  _radiusNm = radiusNm; _hideGround = hideGround;
+  _ac.erase(std::remove_if(_ac.begin(), _ac.end(), [&](const Aircraft& a) {
+    return a.distNm > _radiusNm * 1.2f || (_hideGround && a.onGround);
+  }), _ac.end());
+  if (_bus) _bus->publish(ProviderId::Aircraft);
+}
+
 void AircraftProvider::poll() {
   if (_inflight || !_loc->active().valid) return;
   // Drop a contact set that hasn't refreshed in >60s. Two reasons: (1) don't show
