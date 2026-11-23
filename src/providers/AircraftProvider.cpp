@@ -108,7 +108,47 @@ void AircraftProvider::poll() {
                                          // (otherwise _inflight sticks -> "scanning" forever)
 }
 
-void AircraftProvider::parseStream(Stream& body) {
+// Feeds ArduinoJson/find() one byte at a time from 512-byte bulk reads. Over TLS a
+// per-byte read() is a full mbedtls_ssl_read, slow enough that the 2.5 s parse cap
+// expired before the first contact (status Ready, 0 contacts). Runs on the single
+// NET TASK only, so the static buffer is safe.
+class BufClient : public Stream {
+public:
+  explicit BufClient(Client& c) : _c(c) { setTimeout(8000); }
+  int available() override { return (int)(_n - _i) + _c.available(); }
+  int read() override { return (_i < _n || fill()) ? _b[_i++] : -1; }
+  int peek() override { return (_i < _n || fill()) ? _b[_i] : -1; }
+  size_t write(uint8_t) override { return 0; }
+  // Skip to the aircraft array key: "ac" (adsb.lol / airplanes.live) or "aircraft"
+  // (adsb.fi / tar1090 / readsb). A bare "\"ac" prefix is NOT safe: it is not a
+  // prefix of "aircraft" and it matches hex ids like "aca6c0" mid-array.
+  bool findAircraftKey() {
+    MultiTarget t[2] = {{"\"ac\"", 4, 0}, {"\"aircraft\"", 10, 0}};
+    return findMulti(t, 2) >= 0;
+  }
+private:
+  bool fill() {
+    const uint32_t t0 = millis();
+    for (;;) {
+      int a = _c.available();
+      if (a > 0) {
+        int r = _c.read(_b, a > (int)sizeof(_b) ? sizeof(_b) : (size_t)a);
+        if (r > 0) { _n = (size_t)r; _i = 0; return true; }
+      }
+      if (!_c.connected() && _c.available() <= 0) return false;
+      if (millis() - t0 > _timeout) return false;
+      vTaskDelay(1);
+    }
+  }
+  Client& _c;
+  static uint8_t _b[512];
+  size_t _n = 0, _i = 0;
+};
+uint8_t BufClient::_b[512];
+
+void AircraftProvider::parseStream(Stream& raw) {
+  // HTTPClient::getStream() is always the WiFiClient(Secure) behind it.
+  BufClient body(static_cast<Client&>(raw));
   // Runs on the NET TASK. Parse the aircraft array ELEMENT-BY-ELEMENT straight off
   // the HTTP stream so peak heap is a single aircraft object — NOT the whole feed.
   //
@@ -130,7 +170,7 @@ void AircraftProvider::parseStream(Stream& body) {
   // Advance the stream to the start of the aircraft array. adsb.lol / airplanes.live
   // use "ac"; tar1090 / readsb use "aircraft". "ac" is a prefix of "aircraft", so
   // find("\"ac") lands on either key; then walk to the array's opening '['.
-  if (!body.find((char*)"\"ac")) return;
+  if (!body.findAircraftKey()) return;
   if (!body.find((char*)"["))   return;
 
   // Per-ELEMENT filter: only the fields we actually use. Applied to each object as
@@ -211,6 +251,8 @@ void AircraftProvider::parseStream(Stream& body) {
   } while (body.findUntil((char*)",", (char*)"]"));
 
   std::sort(out.begin(), out.end(), [](const Aircraft& a, const Aircraft& b) { return a.distNm < b.distNm; });
+  Serial.printf("[adsb] parsed %d scanned, %u kept in %lu ms\n", scanned, (unsigned)out.size(),
+                (unsigned long)(millis() - parseStart));
   _acStaging = std::move(out);
   _staged = true;                        // tell the UI-thread cb a good parse is ready
 }
