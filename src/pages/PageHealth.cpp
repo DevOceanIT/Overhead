@@ -105,12 +105,14 @@ void PageHealth::onTouch(App& app, int x, int y) {
     return;
   }
   if (y < app.contentH() - 24 * u) return;       // only the bottom button row
-  int col = x / (app.contentW() / 3);
+  int col = x / (app.contentW() / 4);
   if (col == 0) {                                 // Refresh all -- serialized, one feed at a time
     _rstep = 0; _rstepMs = 0;                     // advanceRefresh() (tick) walks the sequence
     _refreshMs = millis();
   } else if (col == 1) {                          // Recalibrate touch
     _touch.calibrate(app.display());
+  } else if (col == 2) {                          // rear RGB alert LED on/off
+    _settings.set("ledEnabled", !_settings.getBool("ledEnabled", true)); _settings.save();
   } else {                                        // Reboot (two-tap confirm)
     if (_rebootArm && millis() - _rebootArmMs < 4000) { delay(150); ESP.restart(); }
     else { _rebootArm = true; _rebootArmMs = millis(); }
@@ -237,13 +239,14 @@ void PageHealth::draw(App& app) {
   g.setTextColor(gTheme.accent, gTheme.bg);
 
   // Button row.
-  int by = cy0 + ch - 22 * u, bw = cw / 3;
+  int by = cy0 + ch - 22 * u, bw = cw / 4;
   bool arm = _rebootArm && millis() - _rebootArmMs < 4000;
-  const char* labels[] = {"Refresh", "Calibrate", arm ? "Reboot?" : "Reboot"};
-  for (int i = 0; i < 3; ++i) {
+  bool ledOn = _settings.getBool("ledEnabled", true);
+  const char* labels[] = {"Refresh", "Calibrate", ledOn ? "LED:on" : "LED:off", arm ? "Reboot?" : "Reboot"};
+  for (int i = 0; i < 4; ++i) {
     g.drawRect(i * bw + 2 * u, by, bw - 4 * u, 18 * u, gTheme.grid);
     g.setTextDatum(textdatum_t::middle_center);
-    g.setTextColor(i == 2 && arm ? gTheme.warn : gTheme.accent, gTheme.bg);
+    g.setTextColor((i == 3 && arm) || (i == 2 && !ledOn) ? gTheme.warn : gTheme.accent, gTheme.bg);
     g.drawString(labels[i], i * bw + bw / 2, by + 9 * u);
   }
 }
