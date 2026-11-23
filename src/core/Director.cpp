@@ -10,6 +10,7 @@
 #include "../providers/WeatherProvider.h"
 #include "../providers/AircraftProvider.h"
 #include "../pages/PageSatellites.h"
+#include "StatusLed.h"
 #include "../pages/PageAviation.h"
 #include "../astro/Sun.h"
 #include "../astro/Time.h"
@@ -72,7 +73,43 @@ void Director::scanPasses() {
       _passVisible ? " VIS" : "", _passRadio ? " RF" : "");
 }
 
+// Rear RGB LED: the most important thing happening right now, or off. Quiet hours
+// (local) hold everything but an emergency squawk; night (sun down) dims it.
+void Director::updateLed(uint32_t nowMs) {
+  if (!_led || nowMs - _lastLedMs < 1000) return;
+  _lastLedMs = nowMs;
+  using M = StatusLed::Mode;
+  time_t now = time(nullptr);
+  bool synced = _time->synced();
+
+  bool night = false;
+  if (synced && _loc->active().valid)
+    night = astro::sunAltitudeDeg(astro::julianDate(now), _loc->active().lat, _loc->active().lon) < -0.833;
+
+  bool quiet = false;
+  int qs = (int)_s->getInt("ledQuietStart", 23), qe = (int)_s->getInt("ledQuietEnd", 7);
+  if (synced && qs != qe) {
+    struct tm tm; localtime_r(&now, &tm);
+    quiet = qs > qe ? (tm.tm_hour >= qs || tm.tm_hour < qe) : (tm.tm_hour >= qs && tm.tm_hour < qe);
+  }
+
+  M m = M::Off;
+  String ohMsg;
+  time_t lnet = _launch->launches().empty() ? 0 : _launch->launches()[0].net;
+  bool launchSoon = lnet && (long)(lnet - now) < 10 * 60 && (long)(lnet - now) > -300;
+  bool passSoon = _passAos && _passVisible && _passCloud < 70 &&
+                  now >= _passAos - 5 * 60 && now <= _passLos;
+  if (_aircraft && _aircraft->hasEmergency())                 m = M::Emergency;
+  else if (quiet)                                             m = M::Off;
+  else if (launchSoon)                                        m = M::Launch;
+  else if (passSoon)                                          m = M::Pass;
+  else if (_aircraft && _aircraft->overhead(ohMsg))           m = M::Overhead;
+  else if (_spacewx && _spacewx->kp() >= (float)_s->getInt("ledKp", 7)) m = M::Aurora;
+  _led->set(m, night);
+}
+
 void Director::tick(uint32_t nowMs) {
+  updateLed(nowMs);
   if (!_s->getBool("focusEnabled", true)) return;
   if (nowMs - _lastDecideMs < 3000) return;       // decide every ~3 s
   _lastDecideMs = nowMs;

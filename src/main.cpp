@@ -21,6 +21,7 @@
 #include "core/ThemeController.h"
 #include "core/App.h"
 #include "core/Director.h"
+#include "core/StatusLed.h"
 #include "core/MorseBeeper.h"
 #include "services/Settings.h"
 #include "services/Cache.h"
@@ -77,6 +78,7 @@ static App       app(display, touch, bus, sched);
 static ThemeController themeCtl;
 static MorseBeeper morse;
 static Director  director;
+static StatusLed statusLed;   // rear RGB LED alerts (CYD 2.8)
 // --- services ---
 static Settings        settings;
 static AirportDB       airportDb;
@@ -437,6 +439,8 @@ void setup() {
   director.setAviationPage(aviationPage);
   director.setWeather(&weatherProv);
   director.setAircraft(&aircraftProv);
+  statusLed.begin(&settings);
+  director.setLed(&statusLed);
 
   Serial.printf("[boot] done. free heap=%u  largest=%u\n",
                 Display::freeHeap(), Display::largestFreeBlock());
@@ -465,6 +469,13 @@ static void serviceSerialCmd() {
   } else if (cmd.startsWith("morse")) {
     String w = cmd.substring(5); w.trim(); if (!w.length()) w = "test";
     morse.play(w);                        // unconditional bench test (bypasses the enable/night gate)
+  } else if (cmd.startsWith("led")) {      // bench test: led emergency|launch|pass|overhead|aurora|off
+    String a = cmd.substring(3); a.trim();
+    StatusLed::Mode m = StatusLed::Mode::Off;
+    for (int i = 0; i <= (int)StatusLed::Mode::Emergency; ++i)
+      if (a == StatusLed::name((StatusLed::Mode)i)) m = (StatusLed::Mode)i;
+    statusLed.test(m, 15000);
+    Serial.printf("[cmd] led %s for 15s\n", StatusLed::name(m));
   } else if (cmd == "reboot") {
     Serial.println("[cmd] rebooting"); delay(50); ESP.restart();
   } else if (cmd == "shot") {
@@ -519,6 +530,7 @@ void loop() {
   themeCtl.tick(now);   // day/night palette + backlight
   director.tick(now);   // Intelligent Focus
   morse.tick(now);      // non-blocking Morse alert playback
+  statusLed.tick(now);  // rear RGB LED animation
   app.tick(now);
   display.flushFramebuffer();   // RGB panels: push the drawn cache out to PSRAM for the scan-out
 

@@ -22,6 +22,8 @@ class PageAviation;
 // sat pass / launch) that seize focus. When AUTO it switches the carousel; when
 // MANUAL/pinned it raises a tab badge instead. Pass scanning is limited to
 // watchlisted birds and cached (spec §13: pass prediction is the heavy math).
+class StatusLed;
+
 class Director {
 public:
   void begin(App* app, Settings* s, TimeService* time, LocationService* loc,
@@ -31,10 +33,12 @@ public:
   void setAviationPage(PageAviation* p) { _avPage = p; }
   void setWeather(WeatherProvider* w) { _wx = w; }
   void setAircraft(AircraftProvider* a) { _aircraft = a; }
+  void setLed(StatusLed* l) { _led = l; }
   void tick(uint32_t nowMs);
 
 private:
   void scanPasses();
+  void updateLed(uint32_t nowMs);
 
   App*             _app = nullptr;
   Settings*        _s = nullptr;
@@ -46,6 +50,8 @@ private:
   AviationWxProvider* _avwx = nullptr;
   WeatherProvider* _wx = nullptr;
   AircraftProvider* _aircraft = nullptr;
+  StatusLed*       _led = nullptr;
+  uint32_t         _lastLedMs = 0;
   PageSatellites*  _satPage = nullptr;
   PageAviation*    _avPage = nullptr;
 
