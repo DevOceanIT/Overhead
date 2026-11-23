@@ -78,7 +78,7 @@ void AircraftProvider::poll() {
     // airplanes.live, so parse() is unchanged. (airplanes.live 301-redirects http->
     // https, so it can't be used without TLS.)
     char b[96];
-    snprintf(b, sizeof(b), "http://api.adsb.lol/v2/point/%.4f/%.4f/%d",
+    snprintf(b, sizeof(b), "https://opendata.adsb.fi/api/v2/lat/%.4f/lon/%.4f/dist/%d",   // adsb.lol/adsb.fi now refuse plain HTTP (Nov 2026); TLS via the heap-floor guard
              centerLat(), centerLon(), (int)_radiusNm);
     url = b;
   }
