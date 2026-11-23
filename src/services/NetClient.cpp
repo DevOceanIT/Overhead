@@ -94,6 +94,9 @@ void NetClient::perform(Job* job) {
   http.setTimeout(8000);
   http.setUserAgent("Overhead/0.1");
   http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+  // In-task parsers read the raw stream, so ask for HTTP/1.0: servers like adsb.fi
+  // otherwise reply chunked and the chunk-size lines corrupt the JSON mid-stream.
+  if (job->inTask) http.useHTTP10(true);
 
   // Build the body String, OR (if an in-task parser is supplied) stream the response
   // straight through it without buffering — avoids a huge contiguous String alloc.
