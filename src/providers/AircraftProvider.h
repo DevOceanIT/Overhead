@@ -27,6 +27,9 @@ class AircraftProvider {
 public:
   void begin(Settings* s, NetClient* net, EventBus* bus, LocationService* loc);
   void poll();
+  // Apply a range / ground-filter change now (re-filter the contacts on hand) so the
+  // ring and list respond to a tap at once; poll() refetches when the net is free.
+  void applyFilters(float radiusNm, bool hideGround);
   // Foreground = Aircraft page is showing -> poll at the scheduler's full rate.
   // Background -> throttle to ~60 s (radar isn't visible; saves requests + heap).
   void setForeground(bool fg) { _fg = fg; }
